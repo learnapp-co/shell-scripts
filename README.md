@@ -72,9 +72,19 @@ Attach a policy that allows upload to your backup prefix only, for example **`s3
 
 ### Manual run
 
+Local-only (no S3) unless you pass env on the same line:
+
 ```bash
 sudo /path/to/shell-scripts/db-backup.sh
 ```
+
+With S3 (**required** for uploads — the script does not read this from a file):
+
+```bash
+sudo env S3_BACKUP_URI="s3://YOUR-BUCKET/prefix/" AWS_REGION="ap-south-1" /path/to/shell-scripts/db-backup.sh
+```
+
+If backups stay on disk only, check **`/var/log/mongo-backup.log`** (or your cron log): the script now logs when **`S3_BACKUP_URI`** is empty. For cron, variables must appear **in** **`/etc/cron.d/mongo-backup`** **above** the schedule line (or re-run **`mongo-backup-install-cron.sh`** with **`S3_BACKUP_URI`** / **`AWS_REGION`** set).
 
 ## `mongo-backup-install-cron.sh`
 

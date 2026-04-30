@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Same PATH as typical /etc/cron.d so `aws` is found when installed to /usr/local/bin
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 # Runs mongodump from the mongo Docker container using the same credentials
 # as mongo-dev-setup.sh (written to CREDENTIAL_FILE on first provisioning).
 
@@ -76,6 +79,8 @@ if [ -n "$S3_BACKUP_URI" ]; then
   aws "${aws_args[@]}"
 
   log "S3 upload complete"
+else
+  log "S3_BACKUP_URI is empty — skipping S3 upload (export it or set in /etc/cron.d/mongo-backup above the job line)."
 fi
 
 log "Done"
