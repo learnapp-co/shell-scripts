@@ -39,7 +39,7 @@ MongoDB listens on **27017** on all interfaces (`-p 27017:27017`). Restrict acce
 
 ## `db-backup.sh`
 
-Creates a compressed **logical** backup (`mongodump` archive) of everything the root user can read. Intended to run daily from cron as **root** on the same host as Docker. Local archives under `BACKUP_DIR` are **not** rotated by the script; configure **S3 lifecycle** (and optional local cleanup) yourself.
+Creates a compressed **logical** backup (`mongodump` archive) of everything the root user can read. Intended to run daily from cron as **root** on the same host as Docker. After a **successful** S3 upload (`S3_BACKUP_URI` set), the **local archive is removed by default** to save disk (`KEEP_LOCAL_BACKUP_AFTER_S3=1` keeps it). If S3 is not configured, backups stay under **`BACKUP_DIR`**. S3 lifecycle is still your retention policy there.
 
 ### Configuration (environment variables)
 
@@ -47,9 +47,10 @@ Creates a compressed **logical** backup (`mongodump` archive) of everything the 
 | -------- | ------- | ------- |
 | `CONTAINER_NAME` | `mongo` | Docker container name |
 | `CREDENTIAL_FILE` | `/root/mongo-credentials.txt` | Same file as provisioning |
-| `BACKUP_DIR` | `/var/backups/mongodb` | Where `.archive.gz` files are written (not auto-deleted) |
+| `BACKUP_DIR` | `/var/backups/mongodb` | Temporary path for dumps; cleared after upload when using S3 (unless **`KEEP_LOCAL_BACKUP_AFTER_S3=1`**) |
 | `S3_BACKUP_URI` | *(empty)* | If set, upload each backup with `aws s3 cp` (e.g. `s3://my-bucket/mongodb/daily/`) |
 | `AWS_REGION` | *(empty)* | Passes `--region` to `aws` (omit if your default config is enough) |
+| `KEEP_LOCAL_BACKUP_AFTER_S3` | `0` | Set to **`1`** to retain the `.archive.gz` under **`BACKUP_DIR`** after a successful S3 upload |
 
 Schedule daily runs with **`mongo-backup-install-cron.sh`** (separate file).
 
@@ -59,7 +60,7 @@ Schedule daily runs with **`mongo-backup-install-cron.sh`** (separate file).
 2. Grant the instance an IAM role (or credentials) with **`s3:PutObject`** (and usually **`s3:PutObjectAcl`** if you rely on ACLs) on your bucket/prefix.
 3. Set **`S3_BACKUP_URI`** to a prefix ending with `/` or not; **`db-backup.sh`** uses the archive filename as the object key.
 
-Objects are uploaded with **SSE-S3** server-side encryption (`AES256`). **Retention** should be handled with an S3 **lifecycle rule** (this script does not delete objects in S3 or on disk).
+Objects are uploaded with **SSE-S3** server-side encryption (`AES256`). **Retention in S3** should use bucket **lifecycle**. After a successful upload, **local** files under **`BACKUP_DIR`** are **deleted by default**.
 
 #### How **`aws`** gets permission (no keys in this repo)
 
@@ -97,6 +98,7 @@ Installs a **`root`** cron job in **`/etc/cron.d/mongo-backup`**, copies **`db-b
 | `CRON_SCHEDULE` | `30 22 * * *` | Minute hour DOM month weekday **in the machine’s local time** (default = 04:00 IST when TZ is UTC) |
 | `S3_BACKUP_URI` | *(empty)* | If set, written into `/etc/cron.d/mongo-backup` for each backup run |
 | `AWS_REGION` | *(empty)* | If set, written into the cron fragment |
+| `KEEP_LOCAL_BACKUP_AFTER_S3` | *(omit)* | Set to **`1`** at install time if you want to keep copies on disk after S3 |
 | `SKIP_AWSCLI_INSTALL` | *(unset)* | Set to **`1`** to skip **`apt`** install when **`aws`** is missing |
 
 ```bash
@@ -113,6 +115,6 @@ Cron output: **`/var/log/mongo-backup.log`**. Edit `/etc/cron.d/mongo-backup` or
 Use the password from `/root/mongo-credentials.txt` after copying the archive to the restore host:
 
 ```bash
-mongorestore --gzip --archive=/path/to/mongo-YYYYMMDD-HHMMSS.archive.gz \
+mongorestore --gzip --archive=/path/to/mongo-DD-MM-YYYY-HH-MM-SS.archive.gz \
   --username=admin --password='…' --authenticationDatabase=admin
 ```

@@ -21,6 +21,7 @@ Environment (optional):
   CRON_SCHEDULE    Five cron fields (default: 30 22 * * * = 04:00 IST when system time is UTC)
   S3_BACKUP_URI    If set, embedded in cron fragment for each backup run
   AWS_REGION       If set, embedded in cron fragment
+  KEEP_LOCAL_BACKUP_AFTER_S3  Set to 1 to keep local .archive.gz after S3 (default: delete after upload)
   SKIP_AWSCLI_INSTALL Set to 1 to skip installing aws CLI (use if you install it yourself)
 
 Examples:
@@ -141,6 +142,9 @@ umask 022
   fi
   if [[ -n "${AWS_REGION:-}" ]]; then
     printf 'AWS_REGION=%s\n' "$AWS_REGION"
+  fi
+  if [[ -n "${KEEP_LOCAL_BACKUP_AFTER_S3:-}" ]]; then
+    printf 'KEEP_LOCAL_BACKUP_AFTER_S3=%s\n' "$KEEP_LOCAL_BACKUP_AFTER_S3"
   fi
   printf '%s root %s >> /var/log/mongo-backup.log 2>&1\n' "$schedule" "$SCRIPT_TARGET"
 } >"$CRON_FRAGMENT"

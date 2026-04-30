@@ -13,6 +13,8 @@ readonly BACKUP_DIR="${BACKUP_DIR:-/var/backups/mongodb}"
 # Optional: e.g. s3://my-bucket/mongodb/daily/
 readonly S3_BACKUP_URI="${S3_BACKUP_URI:-}"
 readonly AWS_REGION="${AWS_REGION:-}"
+# Set to 1 to keep the local .archive.gz after a successful S3 upload (default: remove to save disk)
+readonly KEEP_LOCAL_BACKUP_AFTER_S3="${KEEP_LOCAL_BACKUP_AFTER_S3:-0}"
 
 log() {
   echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] $*"
@@ -43,7 +45,8 @@ if [ "$state" != "running" ]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
-stamp="$(date +%Y%m%d-%H%M%S)"
+# Local wall time, e.g. mongo-30-04-2026-14-35-22.archive.gz
+stamp="$(date +%d-%m-%Y-%H-%M-%S)"
 outfile="$BACKUP_DIR/mongo-${stamp}.archive.gz"
 
 log "Starting backup → $outfile"
@@ -79,6 +82,12 @@ if [ -n "$S3_BACKUP_URI" ]; then
   aws "${aws_args[@]}"
 
   log "S3 upload complete"
+  if [[ "${KEEP_LOCAL_BACKUP_AFTER_S3}" != "1" ]]; then
+    rm -f "$outfile"
+    log "Removed local archive after S3 upload ($(basename "$outfile"))"
+  else
+    log "KEEP_LOCAL_BACKUP_AFTER_S3=1 — keeping local file $outfile"
+  fi
 else
   log "S3_BACKUP_URI is empty — skipping S3 upload (export it or set in /etc/cron.d/mongo-backup above the job line)."
 fi
