@@ -55,7 +55,7 @@ Schedule daily runs with **`mongo-backup-install-cron.sh`** (separate file).
 
 ### S3 upload
 
-1. **`mongo-backup-install-cron.sh`** installs the **`awscli`** Ubuntu package when **`aws`** is not already on **`PATH`** (omit with **`SKIP_AWSCLI_INSTALL=1`**; on hosts without **`apt`**, install the CLI yourself per [AWS’s guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)).
+1. **`mongo-backup-install-cron.sh`** installs **`aws`** if missing: it tries **`apt install awscli`** first, then falls back to **AWS CLI v2** from `https://awscli.amazonaws.com/` (needs **`curl`/`unzip`** from apt and outbound HTTPS). Skip all of that with **`SKIP_AWSCLI_INSTALL=1`** if you install the CLI yourself.
 2. Grant the instance an IAM role (or credentials) with **`s3:PutObject`** (and usually **`s3:PutObjectAcl`** if you rely on ACLs) on your bucket/prefix.
 3. Set **`S3_BACKUP_URI`** to a prefix ending with `/` or not; **`db-backup.sh`** uses the archive filename as the object key.
 

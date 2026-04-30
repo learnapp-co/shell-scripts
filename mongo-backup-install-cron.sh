@@ -21,7 +21,7 @@ Environment (optional):
   CRON_SCHEDULE    Five cron fields (default: 30 22 * * * = 04:00 IST when system time is UTC)
   S3_BACKUP_URI    If set, embedded in cron fragment for each backup run
   AWS_REGION       If set, embedded in cron fragment
-  SKIP_AWSCLI_INSTALL Set to 1 to skip apt install of aws CLI (Ubuntu)
+  SKIP_AWSCLI_INSTALL Set to 1 to skip installing aws CLI (use if you install it yourself)
 
 Examples:
   sudo bash $0
@@ -49,14 +49,56 @@ ensure_aws_cli() {
   if command -v aws >/dev/null 2>&1; then
     return 0
   fi
+
+  install_aws_cli_v2_bundle() {
+    local arch zip url tmpdir ec=0
+    arch="$(uname -m)"
+    case "$arch" in
+      x86_64) zip='awscli-exe-linux-x86_64.zip' ;;
+      aarch64 | arm64) zip='awscli-exe-linux-aarch64.zip' ;;
+      *)
+        echo "ERROR: Unsupported CPU for AWS CLI v2 bundle: $arch (install aws manually)." >&2
+        return 1
+        ;;
+    esac
+    url="https://awscli.amazonaws.com/${zip}"
+    tmpdir="$(mktemp -d)" || return 1
+    echo "Installing AWS CLI v2 from ${url} …"
+    curl -fsSL "$url" -o /tmp/awscliv2.zip &&
+      unzip -oq /tmp/awscliv2.zip -d "$tmpdir" &&
+      "$tmpdir/aws/install" --update -i /usr/local/aws-cli -b /usr/local/bin ||
+      ec=$?
+    rm -rf "$tmpdir" /tmp/awscliv2.zip
+    return "$ec"
+  }
+
   if ! command -v apt-get >/dev/null 2>&1; then
-    echo 'ERROR: aws CLI not installed and apt-get missing. Install aws manually (see README) or pass SKIP_AWSCLI_INSTALL=1.' >&2
+    echo 'ERROR: apt-get missing. Install AWS CLI manually or use a host with curl/unzip and run the official v2 installer.' >&2
     exit 1
   fi
+
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y awscli
+  apt-get install -y curl unzip ca-certificates
 
+  if apt-get install -y awscli 2>/dev/null; then
+    :
+  fi
+
+  if command -v aws >/dev/null 2>&1; then
+    echo "Using aws CLI from apt (package awscli)."
+    return 0
+  fi
+
+  if ! install_aws_cli_v2_bundle; then
+    exit 1
+  fi
+
+  if ! command -v aws >/dev/null 2>&1; then
+    echo 'ERROR: AWS CLI still not available after install attempts.' >&2
+    exit 1
+  fi
+  echo 'AWS CLI v2 installed under /usr/local/aws-cli, aws in /usr/local/bin.'
 }
 
 ensure_aws_cli
