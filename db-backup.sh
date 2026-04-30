@@ -10,11 +10,6 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH
 readonly CONTAINER_NAME="${CONTAINER_NAME:-mongo}"
 readonly CREDENTIAL_FILE="${CREDENTIAL_FILE:-/root/mongo-credentials.txt}"
 readonly BACKUP_DIR="${BACKUP_DIR:-/var/backups/mongodb}"
-# Optional: e.g. s3://my-bucket/mongodb/daily/
-readonly S3_BACKUP_URI="${S3_BACKUP_URI:-}"
-readonly AWS_REGION="${AWS_REGION:-}"
-# Set to 1 to keep the local .archive.gz after a successful S3 upload (default: remove to save disk)
-readonly KEEP_LOCAL_BACKUP_AFTER_S3="${KEEP_LOCAL_BACKUP_AFTER_S3:-0}"
 
 log() {
   echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] $*"
@@ -32,6 +27,13 @@ if [ -z "${MONGO_USER:-}" ] || [ -z "${MONGO_PASS:-}" ]; then
   log "ERROR: MONGO_USER and MONGO_PASS must be set in $CREDENTIAL_FILE"
   exit 1
 fi
+
+# S3/AWS: set in $CREDENTIAL_FILE and/or environment before runs (e.g. cron). Must follow `. credential` so assignments in that file succeed.
+# Optional URI: s3://my-bucket/prefix/
+readonly S3_BACKUP_URI="${S3_BACKUP_URI:-}"
+readonly AWS_REGION="${AWS_REGION:-}"
+# Set to 1 to keep the local .archive.gz after a successful S3 upload (default: remove to save disk)
+readonly KEEP_LOCAL_BACKUP_AFTER_S3="${KEEP_LOCAL_BACKUP_AFTER_S3:-0}"
 
 if ! docker info >/dev/null 2>&1; then
   log "ERROR: Docker is not reachable (is it running?)."
