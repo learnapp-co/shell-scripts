@@ -37,9 +37,9 @@ Use `MONGO_USER` and `MONGO_PASS` in your connection string (e.g. `mongodb://MON
 
 MongoDB listens on **27017** on all interfaces (`-p 27017:27017`). Restrict access with a security group or firewall in production.
 
-## `mongo-backup-daily.sh`
+## `db-backup.sh`
 
-Creates a compressed **logical** backup (`mongodump` archive) of everything the root user can read. Intended to run daily from cron as **root** on the same host as Docker.
+Creates a compressed **logical** backup (`mongodump` archive) of everything the root user can read. Intended to run daily from cron as **root** on the same host as Docker. Local archives under `BACKUP_DIR` are **not** rotated by the script; configure **S3 lifecycle** (and optional local cleanup) yourself.
 
 ### Configuration (environment variables)
 
@@ -47,39 +47,58 @@ Creates a compressed **logical** backup (`mongodump` archive) of everything the 
 | -------- | ------- | ------- |
 | `CONTAINER_NAME` | `mongo` | Docker container name |
 | `CREDENTIAL_FILE` | `/root/mongo-credentials.txt` | Same file as provisioning |
-| `BACKUP_DIR` | `/var/backups/mongodb` | Where `.archive.gz` files are written |
-| `RETENTION_DAYS` | `14` | Delete **local** backups older than this many days |
+| `BACKUP_DIR` | `/var/backups/mongodb` | Where `.archive.gz` files are written (not auto-deleted) |
 | `S3_BACKUP_URI` | *(empty)* | If set, upload each backup with `aws s3 cp` (e.g. `s3://my-bucket/mongodb/daily/`) |
 | `AWS_REGION` | *(empty)* | Passes `--region` to `aws` (omit if your default config is enough) |
 
+Schedule daily runs with **`mongo-backup-install-cron.sh`** (separate file).
+
 ### S3 upload
 
-1. Install the AWS CLI on the instance (e.g. `sudo apt-get install -y awscli` on Ubuntu, or use [AWS’s install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)).
+1. **`mongo-backup-install-cron.sh`** installs the **`awscli`** Ubuntu package when **`aws`** is not already on **`PATH`** (omit with **`SKIP_AWSCLI_INSTALL=1`**; on hosts without **`apt`**, install the CLI yourself per [AWS’s guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)).
 2. Grant the instance an IAM role (or credentials) with **`s3:PutObject`** (and usually **`s3:PutObjectAcl`** if you rely on ACLs) on your bucket/prefix.
-3. Set **`S3_BACKUP_URI`** to a prefix ending with `/` or not; the script normalizes it and uses the archive filename as the object key.
+3. Set **`S3_BACKUP_URI`** to a prefix ending with `/` or not; **`db-backup.sh`** uses the archive filename as the object key.
 
-Objects are uploaded with **SSE-S3** server-side encryption (`AES256`). For long-term retention in S3, add a **bucket lifecycle rule** (the script does not delete objects in S3).
+Objects are uploaded with **SSE-S3** server-side encryption (`AES256`). **Retention** should be handled with an S3 **lifecycle rule** (this script does not delete objects in S3 or on disk).
+
+#### How **`aws`** gets permission (no keys in this repo)
+
+The **`aws`** CLI picks credentials automatically (standard [credential chain](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html)):
+
+1. **EC2 instance profile** (recommended): attach an IAM **role** to the instance (launch template / instance settings). Cron runs **`db-backup.sh`** as **`root`** on the **host**, so **`aws`** can read **temporary credentials** from the instance metadata endpoint—**no **`AWS_SECRET_ACCESS_KEY`** in cron**.
+2. **Fallbacks** (manual / non‑EC2): environment variables (**`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**), **`~/.aws/credentials`** (for **`root`**, that’s **`/root/.aws/credentials`**), or SSO / other configured profiles—only if present.
+
+Attach a policy that allows upload to your backup prefix only, for example **`s3:PutObject`** (and **`s3:AbortMultipartUpload`** if you rely on multipart) on **`arn:aws:s3:::YOUR-BUCKET/mongodb/daily/*`**.
 
 ### Manual run
 
 ```bash
-sudo /path/to/shell-scripts/mongo-backup-daily.sh
+sudo /path/to/shell-scripts/db-backup.sh
 ```
 
-### Cron (daily at 02:15 UTC)
+## `mongo-backup-install-cron.sh`
+
+Installs a **`root`** cron job in **`/etc/cron.d/mongo-backup`**, copies **`db-backup.sh`** to **`/usr/local/sbin/db-backup.sh`**, and reloads **`cron`**. If **`aws`** is missing, **`apt-get install awscli`** is run (**Ubuntu**/Debian with `apt-get`). Run once on the server **as root**. The default schedule is **`30 22 * * *`** (22:30 **UTC** ≈ **04:00 IST**). Cron uses the **host’s** timezone; EC2 Linux is usually UTC—if yours is not, override with **`CRON_SCHEDULE`**.
+
+| Variable / arg | Default | Meaning |
+| ---------------- | ------- | ------- |
+| First argument | *(see below)* | Path to `db-backup.sh`; if omitted, uses `BACKUP_SCRIPT` or the copy next to this installer |
+| `BACKUP_SCRIPT` | | Same as passing the path via env instead of argv |
+| `CRON_SCHEDULE` | `30 22 * * *` | Minute hour DOM month weekday **in the machine’s local time** (default = 04:00 IST when TZ is UTC) |
+| `S3_BACKUP_URI` | *(empty)* | If set, written into `/etc/cron.d/mongo-backup` for each backup run |
+| `AWS_REGION` | *(empty)* | If set, written into the cron fragment |
+| `SKIP_AWSCLI_INSTALL` | *(unset)* | Set to **`1`** to skip **`apt`** install when **`aws`** is missing |
 
 ```bash
-sudo cp /path/to/shell-scripts/mongo-backup-daily.sh /usr/local/sbin/mongo-backup-daily.sh
-sudo tee /etc/cron.d/mongo-backup <<'EOF'
-S3_BACKUP_URI=s3://YOUR-BUCKET/mongodb/daily/
-AWS_REGION=us-east-1
-15 2 * * * root /usr/local/sbin/mongo-backup-daily.sh >> /var/log/mongo-backup.log 2>&1
-EOF
+sudo bash /path/to/shell-scripts/mongo-backup-install-cron.sh
+sudo bash /path/to/shell-scripts/mongo-backup-install-cron.sh /custom/path/db-backup.sh
+sudo env S3_BACKUP_URI=s3://YOUR-BUCKET/mongodb/daily/ AWS_REGION=us-east-1 \
+  bash /path/to/shell-scripts/mongo-backup-install-cron.sh
 ```
 
-Adjust `S3_BACKUP_URI` / `AWS_REGION` or remove the lines you do not need. On EC2, prefer an **instance role** over long-lived access keys.
+Cron output: **`/var/log/mongo-backup.log`**. Edit `/etc/cron.d/mongo-backup` or re-run the installer to change schedule or S3. On EC2, prefer an instance role for **`aws`** instead of keys.
 
-### Restore (on a host with `mongorestore`, e.g. another `mongo:8` container)
+## Restore (mongorestore)
 
 Use the password from `/root/mongo-credentials.txt` after copying the archive to the restore host:
 

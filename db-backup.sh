@@ -7,7 +7,6 @@ set -euo pipefail
 readonly CONTAINER_NAME="${CONTAINER_NAME:-mongo}"
 readonly CREDENTIAL_FILE="${CREDENTIAL_FILE:-/root/mongo-credentials.txt}"
 readonly BACKUP_DIR="${BACKUP_DIR:-/var/backups/mongodb}"
-readonly RETENTION_DAYS="${RETENTION_DAYS:-14}"
 # Optional: e.g. s3://my-bucket/mongodb/daily/
 readonly S3_BACKUP_URI="${S3_BACKUP_URI:-}"
 readonly AWS_REGION="${AWS_REGION:-}"
@@ -78,11 +77,5 @@ if [ -n "$S3_BACKUP_URI" ]; then
 
   log "S3 upload complete"
 fi
-
-# Remove backups older than RETENTION_DAYS
-find "$BACKUP_DIR" -maxdepth 1 -type f -name 'mongo-*.archive.gz' -mtime "+$RETENTION_DAYS" -print -delete |
-  while read -r old; do
-    log "Pruned old backup: $old"
-  done
 
 log "Done"
