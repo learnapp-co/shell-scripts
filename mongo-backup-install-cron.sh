@@ -119,7 +119,7 @@ else
   src="$(readlink -f "$src" || echo "$src")"
 fi
 
-schedule="${CRON_SCHEDULE:-00 7 * * *}"
+schedule="${CRON_SCHEDULE:-30 22 * * *}"
 nfields="$(awk '{print NF}' <<<"$schedule")"
 if [[ "$nfields" -ne 5 ]]; then
   echo "ERROR: CRON_SCHEDULE must be exactly 5 cron fields (e.g. 30 22 * * *). Got NF=$nfields" >&2
