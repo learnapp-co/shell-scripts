@@ -31,7 +31,7 @@ fi
 # -----------------------------
 # 4. Fix permissions for MongoDB
 # -----------------------------
-chown -R 999:999 /data/db
+sudo chown -R 999:999 /data/db
 
 # -----------------------------
 # 5. Persist mount (fstab)
