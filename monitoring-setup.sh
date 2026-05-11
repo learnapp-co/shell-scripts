@@ -3,7 +3,10 @@
 set -euo pipefail
 
 sudo apt update
-sudo apt install -y amazon-cloudwatch-agent
+wget https://s3.amazonaws.com/amazoncloudwatch-agent/debian/amd64/latest/amazon-cloudwatch-agent.deb
+sudo dpkg -i -E ./amazon-cloudwatch-agent.deb
+
+sudo mkdir -p /etc/aws/amazon-cloudwatch-agent
 
 sudo tee /etc/aws/amazon-cloudwatch-agent/config.json > /dev/null <<'EOF'
 {
